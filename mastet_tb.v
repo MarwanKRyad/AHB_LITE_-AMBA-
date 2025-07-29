@@ -64,9 +64,156 @@ end
 initial 
 begin
 
-	HREADY_tb=1; HRESETn_tb=0;
-	@(negedge HCLK_tb);
+	Read_transfer();
+	reset_between_cycles();
+
+	Write_transfer();
+	reset_between_cycles();
+
+	Read_transfer_with_wait_states();
+	reset_between_cycles();
+
+	write_transfer_with_wait_states();
+	reset_between_cycles();
+
+	Multiple_transfers();
+	reset_between_cycles();
+
+	Transfer_type_examples();
+	reset_between_cycles();
+
+	Undefined_length_bursts();
+	reset_between_cycles();
+
+
+	$stop;
+end
+
+/*.....................Tasks for each trancation for readability ............................................*/
+
+/* clean_cycle*/
+task clean_cycle;
+	begin
+		HREADY_tb=1; HRESETn_tb=0; 
+		@(negedge HCLK_tb);
+	end
 	
+endtask 
+
+/* Figure 3-1 Read transfer*/
+task Read_transfer;
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; AADDR_tb=32'hA; AWRITE_tb=0; ATRANS_tb=1; /*Non_seq*/ Burst_tb=0;
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hB; AWRITE_tb=1; ATRANS_tb=0; //idle
+	@(negedge HCLK_tb);
+	HRDATA_tb=5;
+	@(negedge HCLK_tb);
+end
+endtask 
+
+/* Figure 3-2 Write transfer*/
+task Write_transfer;
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; AADDR_tb=32'hA; AWRITE_tb=1; AWDATA_tb=8;  ATRANS_tb=1; /*Non_seq*/ Burst_tb=0;
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hB; AWRITE_tb=1; AWDATA_tb=2;  ATRANS_tb=0; //idle
+	@(negedge HCLK_tb);
+end
+endtask 
+
+/*Figure 3-3 Read transfer with wait states*/
+task Read_transfer_with_wait_states;
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; AADDR_tb=32'hA; AWRITE_tb=0; ATRANS_tb=1; /*Non_seq*/ Burst_tb=0;
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hB; AWRITE_tb=1; ATRANS_tb=1;  //Non_seq
+	@(posedge HCLK_tb);
+	HREADY_tb=0;
+	@(negedge HCLK_tb);
+	ATRANS_tb=0; start_tb=0; //idle
+	@(posedge HCLK_tb);
+	@(posedge HCLK_tb);
+	HREADY_tb=1;
+	@(negedge HCLK_tb);
+	HRDATA_tb=5;
+	@(negedge HCLK_tb);
+	@(negedge HCLK_tb);
+end
+endtask 
+
+/*Figure 3-4 write transfer with wait states*/
+task write_transfer_with_wait_states();
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; AWDATA_tb=9; AADDR_tb=32'hA; AWRITE_tb=1; ATRANS_tb=1; /*Non_seq*/ Burst_tb=0;
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hB; AWRITE_tb=0; ATRANS_tb=1;  //Non_seq
+	@(posedge HCLK_tb);
+	HREADY_tb=0;
+	@(negedge HCLK_tb);
+	ATRANS_tb=0; start_tb=0; //idle
+	@(posedge HCLK_tb);
+	HREADY_tb=1;
+	@(negedge HCLK_tb);
+end
+endtask 
+
+/*Figure 3-5 Multiple transfers*/	
+task Multiple_transfers();
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; AWDATA_tb=9; AADDR_tb=32'hA; AWRITE_tb=1; ATRANS_tb=1; /*Non_seq*/ Burst_tb=0;
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hB; AWRITE_tb=0; ATRANS_tb=1;  //Non_seq
+	@(negedge HCLK_tb);
+	AADDR_tb=32'hC; AWRITE_tb=1; AWDATA_tb=2; ATRANS_tb=1;  //Non_seq
+	@(posedge HCLK_tb);
+	HREADY_tb=0;
+	@(negedge HCLK_tb);
+	ATRANS_tb=0; start_tb=0; //idle
+	@(posedge HCLK_tb);
+	HREADY_tb=1;
+	@(negedge HCLK_tb);
+	HRDATA_tb=5;
+	@(negedge HCLK_tb);
+	@(negedge HCLK_tb);
+end
+endtask 
+
+/*3-6 Transfer type examples*/
+task Transfer_type_examples();
+begin
+	clean_cycle();
+	HRESETn_tb=1; start_tb=1; Burst_tb=0;  AADDR_tb=32'h20; AWRITE_tb=0; ATRANS_tb=1; //Non_seq
+	ABURST_tb=1; ASIZE_tb=2; //shift size is 4 
+	@(negedge HCLK_tb);
+	ATRANS_tb=2; Burst_tb=1;  //seq 
+	@(negedge HCLK_tb);
+	HRDATA_tb=32'h20;  //seq 
+	@(negedge HCLK_tb);
+	HRDATA_tb=32'h24; 
+	@(posedge HCLK_tb);
+	HREADY_tb=0;
+	@(negedge HCLK_tb);
+	/*here the master has ended its transaction and regarding the wait due to slave's unready the 
+	master interface will handle it internally */
+	HRDATA_tb=32'h28; start_tb=0; Burst_tb=0; ASIZE_tb=0; ABURST_tb=0; ATRANS_tb=0;//Back to idle 
+	@(posedge HCLK_tb);
+	HREADY_tb=1;
+	repeat(2) @(negedge HCLK_tb);
+	HRDATA_tb=32'h2C;
+	@(negedge HCLK_tb);
+end
+endtask 
+
+//3-12 Undefined_length_bursts
+task Undefined_length_bursts;
+begin
+	clean_cycle();
 	HRESETn_tb=1; start_tb=1; Burst_tb=0;  AADDR_tb=32'h20; AWRITE_tb=1;/*write*/ ATRANS_tb=1; /*Non_seq*/
 	AWDATA_tb=32'h20; ABURST_tb=1;/*INCR*/ ASIZE_tb=1; /*shift size is 2 Half_Word*/ 		/*Before T0*/
 	@(negedge HCLK_tb);
@@ -89,26 +236,17 @@ begin
 	@(negedge HCLK_tb);
 	HRDATA_tb=32'h64;	/*slave write the new data*/ 					 /*Before T7*/
 	@(negedge HCLK_tb);
-
-
-
-
-
-	/*
-	ATRANS_tb=2;  //seq 
-	@(negedge HCLK_tb);
-	ATRANS_tb=0; start_tb=0; //idle
-	@(posedge HCLK_tb);
-	HREADY_tb=1;
-	@(negedge HCLK_tb);
-	HRDATA_tb=5;
-	@(negedge HCLK_tb);
-	@(negedge HCLK_tb);
-*/
-
-
-
-
-	$stop;
 end
+endtask
+
+/* rest to begin new test (idle)*/
+task reset_between_cycles;
+begin
+
+	HREADY_tb=1; HRESETn_tb=0; start_tb=0; ATRANS_tb=0; //idle
+	@(negedge HCLK_tb);
+	@(negedge HCLK_tb);
+	@(negedge HCLK_tb);
+end
+endtask 
 endmodule 
